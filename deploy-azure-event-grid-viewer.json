@@ -1,0 +1,164 @@
+/*
+   Begin common prolog commands
+   export name=azure-event-grid-viewer
+   export rg=rg_${name}
+   export loc=westus2
+   End common prolog commands
+
+   emacs F10
+   Begin commands to deploy this file using Azure CLI with bash
+   az deployment group create --name $name --resource-group $rg   --template-file  deploy-azure-event-grid-viewer.json --parameters hostingPlanName=eventgridviewer-plan siteName=eventgridviewer-web
+   echo end deploy
+   az resource list -g $rg --query "[?resourceGroup=='$rg'].{ name: name, flavor: kind, resourceType: type, region: location }" --output table
+   End commands to deploy this file using Azure CLI with bash
+
+   emacs ESC 2 F10
+   Begin commands to shut down this deployment using Azure CLI with bash
+   echo CreateBuildEvent.exe
+   CreateBuildEvent.exe&
+   echo "begin shutdown"
+   az deployment group create --mode complete --template-file ./clear-resources.json --resource-group $rg
+   #echo az group delete -g $rg  --yes 
+   #az group delete -g $rg  --yes 
+   BuildIsComplete.exe
+   az resource list -g $rg --query "[?resourceGroup=='$rg'].{ name: name, flavor: kind, resourceType: type, region: location }" --output table
+   echo "showdown is complete"
+   End commands to shut down this deployment using Azure CLI with bash
+
+   emacs ESC 3 F10
+   Begin commands for one time initializations using Azure CLI with bash
+   az group create -l $loc -n $rg
+   export id=`az group show --name $rg --query 'id' --output tsv`
+   echo "id=$id"
+   #export sp="spad_$name"
+   #az ad sp create-for-rbac --name $sp --sdk-auth --role contributor --scopes $id
+   #echo "go to github settings->secrets and create a secret called AZURE_CREDENTIALS with the above output"
+   if [[ -e clear-resources.json ]]
+   then
+   echo clear-resources.json already exists
+   else
+   cat >clear-resources.json <<EOF
+   {
+    "\$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+     "contentVersion": "1.0.0.0",
+     "resources": [] 
+   }
+   EOF
+   fi
+   End commands for one time initializations using Azure CLI with bash
+
+ */
+
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "siteName": {
+        "type": "string",
+        "metadata": {
+          "description": "The name of the web app that you wish to create."
+        }
+      },
+      "hostingPlanName": {
+        "type": "string",
+        "metadata": {
+          "description": "The name of the App Service plan to use for hosting the web app."
+        }
+      },
+      "sku": {
+        "type": "string",
+        "allowedValues": [
+          "F1",
+          "D1",
+          "B1",
+          "B2",
+          "B3",
+          "S1"
+        ],
+        "defaultValue": "F1",
+        "metadata": {
+          "description": "The pricing tier for the hosting plan."
+        }
+      },
+      "repoURL": {
+        "type": "string",
+        "defaultValue": "https://github.com/Azure-Samples/azure-event-grid-viewer.git",
+        "metadata": {
+          "description": "The URL for the GitHub repository that contains the project to deploy."
+        }
+      },
+      "branch": {
+        "type": "string",
+        "defaultValue": "main",
+        "metadata": {
+          "description": "The branch of the GitHub repository to use."
+        }
+      },
+      "location": {
+        "type": "string",
+        "defaultValue": "[resourceGroup().location]",
+        "metadata": {
+          "description": "Location for all resources."
+        }
+      }
+    },
+    "resources": [
+      {
+        "apiVersion": "2020-12-01",
+        "name": "[parameters('hostingPlanName')]",
+        "type": "Microsoft.Web/serverfarms",
+        "location": "[parameters('location')]",
+        "sku": {
+          "name": "[parameters('sku')]",
+          "capacity": 0
+        },
+        "properties": {
+          "name": "[parameters('hostingPlanName')]"
+        }
+      },
+      {
+        "apiVersion": "2020-12-01",
+        "name": "[parameters('siteName')]",
+        "type": "Microsoft.Web/sites",
+        "location": "[parameters('location')]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Web/serverfarms', parameters('hostingPlanName'))]"
+        ],
+        "properties": {
+          "serverFarmId": "[parameters('hostingPlanName')]",
+          "siteConfig": {
+            "webSocketsEnabled": true,
+            "netFrameworkVersion":  "v6.0",
+            "metadata": [
+              {
+                "name": "CURRENT_STACK",
+                "value": "dotnet"
+              }              
+            ]         
+          },
+          "httpsOnly": true          
+        },
+        "resources": [
+          {
+            "apiVersion": "2020-12-01",
+            "name": "web",
+            "type": "sourcecontrols",
+            "dependsOn": [
+              "[resourceId('Microsoft.Web/Sites', parameters('siteName'))]"
+            ],
+            "properties": {
+              "RepoUrl": "[parameters('repoURL')]",
+              "branch": "[parameters('branch')]",
+              "IsManualIntegration": true
+            }
+          }
+        ]
+      }
+    ],
+    "outputs": {
+        "appServiceEndpoint": {
+            "type": "string",
+            "value": "[concat('https://',reference(resourceId('Microsoft.Web/sites', parameters('siteName'))).hostNames[0])]"
+        }
+    }
+  }
